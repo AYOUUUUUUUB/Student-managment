@@ -21,6 +21,10 @@ public class Course {
     private String description;
 
     @OneToMany(mappedBy = "course")
-    private List<Enrollment> enrollments;
+    private List<Enrollment> enrollments;   
+
+
+    
+
 
 }
