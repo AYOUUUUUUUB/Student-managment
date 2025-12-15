@@ -1,0 +1,154 @@
+# =========================
+# PV / PVC PostgreSQL Sonar
+# =========================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sonar-postgres-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: ["ReadWriteOnce"]
+  hostPath:
+    path: /data/sonar-postgres-pv
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonar-postgres-pvc
+  namespace: devops
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+# =========================
+# PV / PVC SonarQube Data
+# =========================
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sonarqube-data-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: ["ReadWriteOnce"]
+  hostPath:
+    path: /data/sonarqube-data-pv
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarqube-data-pvc
+  namespace: devops
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+
+# =========================
+# PostgreSQL Deployment + Service
+# =========================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonar-postgres
+  namespace: devops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonar-postgres
+  template:
+    metadata:
+      labels:
+        app: sonar-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: sonarqube
+            - name: POSTGRES_USER
+              value: sonar
+            - name: POSTGRES_PASSWORD
+              value: sonar
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: sonar-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonar-postgres
+  namespace: devops
+spec:
+  selector:
+    app: sonar-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+# =========================
+# SonarQube Deployment + Service
+# =========================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarqube
+  namespace: devops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonarqube
+  template:
+    metadata:
+      labels:
+        app: sonarqube
+    spec:
+      containers:
+        - name: sonarqube
+          image: sonarqube:community
+          ports:
+            - containerPort: 9000
+          env:
+            - name: SONAR_JDBC_URL
+              value: jdbc:postgresql://sonar-postgres:5432/sonarqube
+            - name: SONAR_JDBC_USERNAME
+              value: sonar
+            - name: SONAR_JDBC_PASSWORD
+              value: sonar
+          volumeMounts:
+            - name: sonar-data
+              mountPath: /opt/sonarqube/data
+      volumes:
+        - name: sonar-data
+          persistentVolumeClaim:
+            claimName: sonarqube-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarqube
+  namespace: devops
+spec:
+  type: NodePort
+  selector:
+    app: sonarqube
+  ports:
+    - port: 9000
+      targetPort: 9000
+      nodePort: 30900
